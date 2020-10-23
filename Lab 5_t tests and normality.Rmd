@@ -8,6 +8,10 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+#install.packages("ggtheme")
+library(ggpubr)
+library(knitr)
+library(ggplot2)
 ```
 
 ## One and two sample difference tests; ANOVA; Goodness of fit tests
@@ -24,7 +28,8 @@ We're going to look at the variable for average weekly income: EARNWEEK. Load th
 **Question 1 (2 points)** _Load the CPS data and filter it to only valid responses._
 
 ```{r}
-#Code here
+CPSdata<-read.csv("data/IPUMS_CPS_FoodSec.csv")%>%
+  filter(EARNWEEK != "9999.99")
 
 ```
 
@@ -32,14 +37,23 @@ We're going to look at the variable for average weekly income: EARNWEEK. Load th
 **Question 2 (5 points)** _To assess the normality of the EARNWEEK variable, create a random sample of 5,000 records using the sample_n function (look it up in help for more information). Then do the following: 1) Perform a Shapiro-Wilk normality test on this variable. 2) Create a Q-Q plot with a line showing the normal distribution. 3) Create a histogram using ggplot or the base R function._
 
 ```{r}
-#Code here.
+sample5k<-sample_n(CPSdata, 5000)
+
+shapiro.test(sample5k$EARNWEEK)
+
+qqnorm(sample5k$EARNWEEK); qqline(sample5k$EARNWEEK)
+#qqplot(sample5k$EARNWEEK)
+ggqqplot(sample5k$EARNWEEK)
+
+hist(sample5k$EARNWEEK) 
+ggplot(sample5k,aes(x=EARNWEEK)) + geom_histogram()
 
 ```
 
 
 **Question 3 (3 points)** _Based on the results you saw in question 1, is this variable normally distributed? How do each of those three tests inform your decision?_
 
-{Your response here}
+The variable does not appear to be normally distributed. This is evidenced by the pronounced curve and the subsequent plateau in the QQ-plot. The p-value provided by the Shapiro-Wilk test is extremely small (less than .05) which also signifies that the data set in question varies significantly when compared to a theoretical normal distribution. The low p-value also indicates that the null hypothesis, "There is no significant difference between our data set and a theoretical normal distribution of the same data", should be rejected. Additionally, the histogram created shows a clear positive skew in the data.
 
 ###Part 2: Testing the differences between states###
 
@@ -47,18 +61,39 @@ Based on the results of the previous questions, test whether the incomes of surv
 
 **Question 4 (3 points)** _Based on the normality of the data, what is the appropriate test for determining if actual household incomes between these cities are significantly different (p=0.05)? Explain why this test is appropriate and give a null and alternative hypothesis for this test_
 
-{Your response here.}
+Given that the data is not normal, I believe the most appropriate test to be the Wilcoxon rank-sum test given that we are only interested in one particular variable from one particular data set and how it compares to a theoretically normal distribution of the same data. Null hypothesis: there is a significant statistical difference between the average weekly earnings in Atlanta and the average weekly earnings in Chicago. Alternative hypothesis: there is no statistical difference between the weekly earnings of people in Chicago and those in Atlanta.
 
 **Question 5 (3 points)** _Create separate data frames for each metro. Then run the test you identified in question 3. Also identify the mean and median values for each dataset._
 
 ```{r}
-#Code goeshere
+atlanta<-CPSdata%>%
+  filter(METAREA == "521")
+mean_earnings_atl = mean(atlanta$EARNWEEK)
+median_earnings_atl = median(atlanta$EARNWEEK)
+
+chicago<-CPSdata%>%
+  filter(METAREA == "1605")
+mean_earnings_chi = mean(chicago$EARNWEEK)
+median_earnings_chi = median(chicago$EARNWEEK)
+
+shapiro.test(atlanta$EARNWEEK)
+shapiro.test(chicago$EARNWEEK)
+
+qqnorm(chicago$EARNWEEK); qqline(chicago$EARNWEEK)
+qqnorm(atlanta$EARNWEEK); qqline(atlanta$EARNWEEK)
+ggqqplot(atlanta$EARNWEEK, title = "ATL Earnweek")
+ggqqplot(chicago$EARNWEEK, title = "CHI Earnweek")
+
+hist(atlanta$EARNWEEK)
+hist(chicago$EARNWEEK)
+
+wilcox.test(atlanta$EARNWEEK, chicago$EARNWEEK)
 ```
 
 
 **Question 6 (2 points)** _Interpret the results of the analysis you did in question 4. Do you reject the null hypothesis? Why or why not? What can we say about household incomes in these two metros?_
 
-{Your response here.}
+While the p-value in this case is quite small, it is still greater than 0.05 which means it is not statistically significant enough to accept the null hypothesis. Therefore, we reject the null hypothesis and accept the alternative hypothesis in this particular case. The household data from the two cities does not differ significantly.
 
 ###Part 3: Analyzing differences in rates for use of food assistance
 
@@ -67,30 +102,53 @@ While the U.S. Census regularly provides data on use of SNAP/Food stamp benefits
 **Question 7 (2 points)** _Go back to the original CPS dataset and filter for records with valid responses to FSFDBNK (<6 on the scale) that are in the states listed above. Call the head of the table when done_
 
 ```{r}
-#Code goes here.
+FSFDBNK_usage<-CPSdata %>%
+  filter(FSFDBNK < 6, STATE %in% c("New York", "New Jersey", "Pennsylvania"))
+kable(head(FSFDBNK_usage))
+
 ```
 
 
 **Question 8 (3 points)** _Create a contingency table of responses to the FSFDBNK variable (the columns of the table) by state using the table function. Then conduct a chi square test on this table._
 
 ```{r}
-#Code goes here.
+FDBNK_contingency<-FSFDBNK_usage%>%
+  group_by(STATE, FSFDBNK)%>%
+  summarise(count = n())%>%
+  pivot_wider(names_from = FSFDBNK, values_from = count, values_fill=0)%>%
+  ungroup()
+
+chisq.test(FDBNK_contingency %>% select(-STATE))
 ```
 
 **Question 9 (4 points)** _Create a small multiples bar graph, faceted by state, that shows the number of responses in each category for the table you created in question 11. You will need to use stat="identity" in the geom_bar function. You will also need to use scales="free" as a parameter in the faceting function to let the y axis values vary by state._
 
 ```{r}
-#Code goes here
+FDBNK_contingency_long<-FDBNK_contingency%>%
+  pivot_longer(cols = `1`:`2`, values_to = "Value", names_to = "Category")
+
+FDBNK_plot<- ggplot(FDBNK_contingency_long, aes(x = Category, y = Value))+
+  geom_bar(stat = "identity")+
+  facet_wrap(vars(STATE), scales = "free")
+
+FDBNK_plot + theme_linedraw()
+
 ```
 
 **Question 10 (3 points)** _What were your null and alternative hypotheses for the chi square test? Based on the results of your test and the visualization you made for question 12, what conclusions can you make about food bank usage? _
 
-{Response goes here.}
+Null hypothesis: there is no significant statistical difference between the foodbank usage rates between the cities. Alternative hypothesis: there is a statistically significant difference between the usage rates for each city. In this particular case, the p-value is greater than 0.05 so there is not a statistically significant difference between the foodbank usage between the cities. The null hypothesis is accepted. The histograms also show the variability between the cities. 
 
 ###Extra credit! (2 points)
 Calculate which city in this three state area is highest for category 1 (no usage of food bank sites). What is city and what is their rate? To calculate this, you'll need to count responses grouped by the METAREA variable within the regional dataset you created in question 7.
 
 ```{r}
-#Code goes here
+city_security<-FSFDBNK_usage%>%
+  group_by(FSFDBNK, METAREA)%>%
+  summarise(count=n())%>%
+  pivot_wider(names_from = FSFDBNK, values_from = count, values_fill=0)%>%
+  ungroup()%>%
+  mutate(total=rowSums(.[2:6]))%>%
+  mutate(rate=`1`/total)
 ```
 
